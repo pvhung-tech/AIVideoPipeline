@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+backend/build/
+backend/dist/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Tauri / Rust
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/*
+!frontend/src-tauri/binaries/.gitkeep
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local application data
+*.db
+*.sqlite
+*.sqlite3
+logs/
+cache/
+output/
+.runtime/
+.tmp/
+benchmark-media/
+benchmark-results/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

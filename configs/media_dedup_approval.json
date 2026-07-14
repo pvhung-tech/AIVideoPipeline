@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "corpusVersion": "wikimedia-pexels-pixabay-corpus-v3-reviewed",
+  "minimumPrecision": 1.0,
+  "requiredProviders": ["wikimedia", "pexels", "pixabay"],
+  "manualReview": {
+    "status": "complete",
+    "reviewedItems": 3,
+    "pendingItems": 0
+  },
+  "groups": {
+    "documentary": {
+      "image": { "maxPositiveDistance": 10, "nearestNegativeDistance": 22, "hardNegatives": 60 },
+      "video": { "maxPositiveDistance": 7, "nearestNegativeDistance": 24.333333, "hardNegatives": 15 }
+    },
+    "education": {
+      "image": { "maxPositiveDistance": 16, "nearestNegativeDistance": 22, "hardNegatives": 60 },
+      "video": { "maxPositiveDistance": 8, "nearestNegativeDistance": 15.333333, "hardNegatives": 15 }
+    },
+    "history": {
+      "image": { "maxPositiveDistance": 13, "nearestNegativeDistance": 20, "hardNegatives": 60 },
+      "video": { "maxPositiveDistance": 13, "nearestNegativeDistance": 28.333333, "hardNegatives": 15 }
+    },
+    "news": {
+      "image": { "maxPositiveDistance": 11, "nearestNegativeDistance": 16, "hardNegatives": 60 },
+      "video": { "maxPositiveDistance": 14.333333, "nearestNegativeDistance": 25.333333, "hardNegatives": 15 }
+    },
+    "podcast": {
+      "image": { "maxPositiveDistance": 12, "nearestNegativeDistance": 18, "hardNegatives": 60 },
+      "video": { "maxPositiveDistance": 11, "nearestNegativeDistance": 23, "hardNegatives": 15 }
+    }
+  }
+}

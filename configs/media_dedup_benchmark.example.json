@@ -1,0 +1,20 @@
+{
+  "pairs": [
+    {
+      "id": "news-image-reencode",
+      "category": "news",
+      "mediaType": "image",
+      "firstPath": "../benchmark-media/news-original.jpg",
+      "secondPath": "../benchmark-media/news-reencoded.jpg",
+      "expectedDuplicate": true
+    },
+    {
+      "id": "news-image-unrelated",
+      "category": "news",
+      "mediaType": "image",
+      "firstPath": "../benchmark-media/news-original.jpg",
+      "secondPath": "../benchmark-media/news-unrelated.jpg",
+      "expectedDuplicate": false
+    }
+  ]
+}

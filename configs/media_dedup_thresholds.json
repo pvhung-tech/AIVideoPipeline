@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "default": {
+    "image": 8,
+    "video": 8
+  },
+  "categories": {
+    "documentary": { "image": 10, "video": 7 },
+    "education": { "image": 16, "video": 8 },
+    "history": { "image": 13, "video": 13 },
+    "news": { "image": 11, "video": 15 },
+    "podcast": { "image": 12, "video": 11 }
+  },
+  "calibration": {
+    "corpusVersion": "wikimedia-pexels-pixabay-corpus-v3-reviewed",
+    "pairsPerCategory": 150,
+    "generatedAt": "2026-07-02"
+  }
+}

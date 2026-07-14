@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "prompts": [
+    {
+      "id": "scene_analysis",
+      "version": 1,
+      "systemTemplate": "You analyze scenes for an automated video production pipeline. Return concise, factual output in the requested language.",
+      "userTemplate": "Analyze this {contentType} scene in {language}. Return JSON with exactly these fields: description, category, keywords. Description must be concise, category must be a short media category, and keywords must contain 1 to 12 concrete visual search phrases.\n\nScene:\n{sceneText}",
+      "requiredVariables": [
+        "contentType",
+        "language",
+        "sceneText"
+      ]
+    }
+  ]
+}
