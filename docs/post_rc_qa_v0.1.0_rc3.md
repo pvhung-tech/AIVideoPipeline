@@ -75,7 +75,32 @@ readable in this session.
 
 ## Post-Publish Verification
 
-Pending. After publishing `v0.1.0-rc3`, download both GitHub Release artifacts,
-verify size and SHA-256, rerun the NSIS installed smoke from the downloaded
-artifact, and run the MSI smoke from an elevated Administrator PowerShell.
+Published release:
+https://github.com/pvhung-tech/AIVideoPipeline/releases/tag/v0.1.0-rc3
 
+| Artifact | Size | SHA-256 | Result |
+| --- | ---: | --- | --- |
+| `AI.Video.Pipeline.Studio_0.1.0_x64-setup.exe` | 28,372,370 bytes | `31D468466D5AB1E21B7D5B11E0F4AAA7EFA6FAB8979F00E44BF5D1A17D6A6E53` | Pass |
+| `AI.Video.Pipeline.Studio_0.1.0_x64_en-US.msi` | 29,675,520 bytes | `4736C46CA2D6E21A009BB099E3450944EA852B580002E171E55C7E5957176A28` | Pass |
+
+## NSIS Published Artifact Smoke
+
+Source artifact:
+`.tmp/post-rc-qa-downloads-v0.1.0-rc3/AI.Video.Pipeline.Studio_0.1.0_x64-setup.exe`
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Silent install to temporary directory | Pass | Installer exited successfully and installed `ai-video-pipeline-studio.exe` plus `fastapi-sidecar.exe`. |
+| Installed sidecar health | Pass | Direct installed sidecar `/api/health` returned `ok`; the direct probe was cleaned before desktop lifecycle checks. |
+| Render recovery from installed sidecar | Pass | Interrupted durable render job recovered from `interrupted` to `queued`, resumed, and completed. |
+| Render output | Pass | Recovery smoke produced `phase8-recovery-20260715-072913.mp4` with size `28,250,581` bytes. |
+| Native app launch sidecar health | Pass | Starting installed `ai-video-pipeline-studio.exe` exposed healthy FastAPI on `127.0.0.1:8765`. |
+| App stop sidecar lifecycle | Pass | After stopping the installed app process and waiting 8 seconds, no installed sidecar process remained and `127.0.0.1:8765` was not listening. |
+| Temporary cleanup | Pass | NSIS uninstall exited `0`; no app or sidecar process remained. |
+
+## MSI Published Artifact Smoke
+
+The MSI artifact downloaded and passed hash verification. Full MSI install
+smoke was not run in this session because the current terminal is not elevated
+and the MSI package is per-machine. Run the MSI smoke from an Administrator
+PowerShell session using the downloaded RC3 MSI artifact.
