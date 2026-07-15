@@ -84,3 +84,19 @@ Follow-up validation:
 This follow-up build resolves the sidecar orphan issue found in the published
 RC1 artifact. Startup performance remains the active post-RC hardening item
 before promoting a stable release or publishing a refreshed RC.
+
+## RC2 Decision
+
+Date: 2026-07-15
+
+MSI smoke was attempted from the current session and correctly failed because
+the package is per-machine and requires Administrator privileges. The script
+reported:
+
+`MSI installer requires Administrator privileges because this package is per-machine.`
+
+Decision: do not cut `v0.1.0-rc2` yet. The lifecycle fix on `master` is ready
+for the next candidate, but the next pass should focus on packaged sidecar
+startup time first because both post-RC NSIS startup samples exceeded the
+revised first-release average target. After that pass, run MSI smoke from
+Administrator PowerShell or a separate QA profile before tagging RC2.
