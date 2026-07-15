@@ -52,3 +52,35 @@ should be reviewed before stable:
 - Published NSIS startup average exceeded the revised `<= 6s` gate in this run.
 - Direct app process termination did not shut down the spawned sidecar processes.
 
+## Follow-Up Local Fix Validation
+
+Date: 2026-07-15
+
+A follow-up local build added Windows Job Object ownership for the FastAPI
+sidecar process tree. This keeps the PyInstaller bootloader and server child in
+the same OS-managed job as the desktop app, so sidecar processes are cleaned up
+even when the app process is terminated externally.
+
+Rebuilt local artifacts:
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `frontend/src-tauri/target/release/bundle/msi/AI Video Pipeline Studio_0.1.0_x64_en-US.msi` | 29,667,328 bytes | `54947E1476F38C91EBAD36E9F36D33F4A9EF62C24D87BFFAE59E593E35E8B926` |
+| `frontend/src-tauri/target/release/bundle/nsis/AI Video Pipeline Studio_0.1.0_x64-setup.exe` | 28,361,068 bytes | `0957D9C229BF078D597E44A6FB6062BBB64019646918F96F1D34A302DB497105` |
+| `frontend/src-tauri/target/release/ai-video-pipeline-studio.exe` | 11,850,752 bytes | `333953D5413C4D6D1C42CA89E294B8CB6F79BC236ACC1B388BFBDC63DCDCB069` |
+| `frontend/src-tauri/binaries/fastapi-sidecar-x86_64-pc-windows-msvc.exe` | 25,901,477 bytes | `274AA9386F723E2C00C02F5F403184766CCE18646DD41D1525A3C8DBABC4BC1D` |
+
+Follow-up validation:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Rust format and tests | Pass | `cargo fmt` and `cargo test --manifest-path frontend/src-tauri/Cargo.toml`: 3 passed. |
+| Tauri installer rebuild | Pass | `npm.cmd run tauri:build` rebuilt sidecar, frontend, app executable, MSI, and NSIS bundles. |
+| NSIS installed sidecar health | Pass | Installed sidecar returned `/api/health` status `ok`. |
+| NSIS startup timing | Needs review | 3 attempts averaged `7.9177s`; samples were `10.7671s`, `6.5055s`, and `6.4804s`. |
+| Installed app lifecycle after external termination | Pass | Starting installed app exposed healthy FastAPI on `127.0.0.1:8765`; after terminating the app process, no installed `fastapi-sidecar` processes remained and port `8765` was no longer listening. |
+| MSI installed smoke | Pending | Current terminal is not elevated. Run MSI smoke from Administrator PowerShell or a separate QA machine/profile. |
+
+This follow-up build resolves the sidecar orphan issue found in the published
+RC1 artifact. Startup performance remains the active post-RC hardening item
+before promoting a stable release or publishing a refreshed RC.

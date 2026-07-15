@@ -22,6 +22,8 @@ const BACKEND_START_TIMEOUT: Duration = Duration::from_secs(15);
 struct BackendChild {
     command_child: CommandChild,
     server_pid: u32,
+    #[cfg(windows)]
+    _job: ProcessJob,
 }
 
 struct BackendProcess(Mutex<Option<BackendChild>>);
@@ -64,6 +66,9 @@ fn start_backend(app: &mut App) -> Result<BackendProcess, Box<dyn Error>> {
         BACKEND_PORT,
     ]);
     let (mut events, child) = command.spawn()?;
+    let sidecar_pid = child.pid();
+    #[cfg(windows)]
+    let job = create_process_job(sidecar_pid)?;
     let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
 
     thread::spawn(move || {
@@ -77,10 +82,14 @@ fn start_backend(app: &mut App) -> Result<BackendProcess, Box<dyn Error>> {
 
     match startup_receiver.recv_timeout(BACKEND_START_TIMEOUT) {
         Ok(StartupSignal::Ready(server_pid)) => {
+            #[cfg(windows)]
+            assign_process_to_job(&job, server_pid)?;
             log::info!("FastAPI sidecar is ready on port {BACKEND_PORT}");
             Ok(BackendProcess(Mutex::new(Some(BackendChild {
                 command_child: child,
                 server_pid,
+                #[cfg(windows)]
+                _job: job,
             }))))
         }
         Ok(StartupSignal::Failed(message)) => {
@@ -184,6 +193,90 @@ fn parse_sidecar_process_id(line: &str) -> Option<u32> {
         .next()?
         .parse()
         .ok()
+}
+
+#[cfg(windows)]
+struct ProcessJob(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+unsafe impl Send for ProcessJob {}
+
+#[cfg(windows)]
+impl Drop for ProcessJob {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn create_process_job(sidecar_pid: u32) -> io::Result<ProcessJob> {
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::JobObjects::{
+            CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        },
+    };
+
+    unsafe {
+        let job_handle = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job_handle.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = SetInformationJobObject(
+            job_handle,
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const _,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        if configured == 0 {
+            let error = io::Error::last_os_error();
+            let _ = CloseHandle(job_handle);
+            return Err(error);
+        }
+
+        let job = ProcessJob(job_handle);
+        assign_process_to_job(&job, sidecar_pid)?;
+
+        log::info!("FastAPI sidecar process job created");
+        Ok(job)
+    }
+}
+
+#[cfg(windows)]
+fn assign_process_to_job(job: &ProcessJob, process_id: u32) -> io::Result<()> {
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::{
+            JobObjects::AssignProcessToJobObject,
+            Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE},
+        },
+    };
+
+    unsafe {
+        let process_handle = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, 0, process_id);
+        if process_handle.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+
+        let assigned = AssignProcessToJobObject(job.0, process_handle);
+        let error = io::Error::last_os_error();
+        let _ = CloseHandle(process_handle);
+
+        if assigned == 0 {
+            Err(error)
+        } else {
+            log::info!("FastAPI sidecar process {process_id} assigned to process job");
+            Ok(())
+        }
+    }
 }
 
 fn stop_backend(app_handle: &tauri::AppHandle) {
