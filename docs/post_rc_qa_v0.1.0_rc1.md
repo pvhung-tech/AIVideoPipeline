@@ -100,3 +100,44 @@ for the next candidate, but the next pass should focus on packaged sidecar
 startup time first because both post-RC NSIS startup samples exceeded the
 revised first-release average target. After that pass, run MSI smoke from
 Administrator PowerShell or a separate QA profile before tagging RC2.
+
+## Startup Hardening Follow-Up
+
+Date: 2026-07-15
+
+A focused startup pass changed the desktop sidecar startup path so `/api/health`
+is served by a lightweight bootstrap ASGI app while the full FastAPI app loads
+in the background. Non-health requests wait for the full app, so normal desktop
+workflow endpoints are still protected from racing before route registration.
+
+The Tauri shell now confirms sidecar readiness by polling `/api/health` instead
+of relying on the Uvicorn log line, and the sidecar receives the desktop parent
+PID through `AI_VIDEO_PIPELINE_PARENT_PID` so it can shut itself down if the
+desktop process is externally terminated. Windows Job Object ownership remains a
+best-effort cleanup layer.
+
+Rebuilt local artifacts after startup hardening:
+
+| Artifact | Size | SHA-256 |
+| --- | ---: | --- |
+| `frontend/src-tauri/target/release/bundle/msi/AI Video Pipeline Studio_0.1.0_x64_en-US.msi` | 29,675,520 bytes | `5AA8B11924F8DE3444E2CDB2EFBE6BA7896883317563FC4F297E7C46E9EC2442` |
+| `frontend/src-tauri/target/release/bundle/nsis/AI Video Pipeline Studio_0.1.0_x64-setup.exe` | 28,367,474 bytes | `80C624D953D811DC8291D5D51034F1AF36A1DED86D17C2163499C9FA657E4B33` |
+| `frontend/src-tauri/target/release/ai-video-pipeline-studio.exe` | 11,875,840 bytes | `CFC7846106FC1A1CDA546369BDDE995AD6BA51F2F4604552C7413A88D669C521` |
+| `frontend/src-tauri/binaries/fastapi-sidecar-x86_64-pc-windows-msvc.exe` | 25,906,014 bytes | `A8A7891CC1CDF0B8A477903B848D4F9682E3DDF7760BC01EDD19D658CE9B277F` |
+
+Final follow-up validation:
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Backend targeted checks | Pass | `ruff format`, `ruff check`, and `pytest tests/test_health.py tests/test_sidecar.py`: 4 passed. |
+| Rust targeted checks | Pass | `cargo fmt` and `cargo test --manifest-path frontend/src-tauri/Cargo.toml`: 1 passed. |
+| Tauri installer rebuild | Pass | `npm.cmd run tauri:build` rebuilt sidecar, frontend, release app, MSI, and NSIS bundles. |
+| Packaged sidecar direct route smoke | Pass | Direct sidecar `/api/health` returned `ok`; `/api/projects/recent` succeeded after full app load. |
+| NSIS installed startup timing | Pass | 5 attempts averaged `3.5818s`; max `4.3726s`; `MeetsAverageTarget=True`; `MeetsStrictMaxTarget=True`. |
+| NSIS installed app lifecycle | Pass | Installed app exposed `/api/health=ok`, `/api/projects/recent` succeeded, external app termination left no sidecar process and no `127.0.0.1:8765` listener. |
+| MSI installed smoke | Pending | Current terminal is not elevated; MSI still reports that Administrator privileges are required for the per-machine package. |
+
+Decision: `master` is technically ready for `v0.1.0-rc2` after MSI smoke passes
+from Administrator PowerShell or a separate QA machine/profile. Do not reuse the
+published `v0.1.0-rc1` artifacts for this fix; RC2 should be cut from the latest
+`master` after the elevated MSI gate.

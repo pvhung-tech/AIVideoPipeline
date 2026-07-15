@@ -3,6 +3,8 @@ param(
     [int]$Port = 9898,
     [int]$Attempts = 3,
     [int]$TimeoutSeconds = 25,
+    [double]$AverageTargetSeconds = 6,
+    [double]$StrictMaxTargetSeconds = 5,
     [string]$OutputPath = ""
 )
 
@@ -86,14 +88,20 @@ for ($index = 1; $index -le $Attempts; $index++) {
 }
 
 $startupSeconds = @($samples | ForEach-Object { $_.StartupSeconds })
+$averageStartupSeconds = [Math]::Round(($startupSeconds | Measure-Object -Average).Average, 4)
+$maxStartupSeconds = [Math]::Round(($startupSeconds | Measure-Object -Maximum).Maximum, 4)
 $summary = [PSCustomObject]@{
     Probe = "phase10_sidecar_startup"
     SidecarPath = (Resolve-Path -LiteralPath $SidecarPath).Path
     Attempts = $Attempts
-    AverageStartupSeconds = [Math]::Round(($startupSeconds | Measure-Object -Average).Average, 4)
-    MaxStartupSeconds = [Math]::Round(($startupSeconds | Measure-Object -Maximum).Maximum, 4)
-    TargetStartupSeconds = 5
-    MeetsTarget = (($startupSeconds | Measure-Object -Maximum).Maximum -le 5)
+    AverageStartupSeconds = $averageStartupSeconds
+    MaxStartupSeconds = $maxStartupSeconds
+    AverageTargetSeconds = $AverageTargetSeconds
+    StrictMaxTargetSeconds = $StrictMaxTargetSeconds
+    MeetsAverageTarget = ($averageStartupSeconds -le $AverageTargetSeconds)
+    MeetsStrictMaxTarget = ($maxStartupSeconds -le $StrictMaxTargetSeconds)
+    TargetStartupSeconds = $StrictMaxTargetSeconds
+    MeetsTarget = ($maxStartupSeconds -le $StrictMaxTargetSeconds)
     Samples = $samples
 }
 

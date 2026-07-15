@@ -1,20 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.ai import router as aiRouter
-from app.api.error_handlers import registerErrorHandlers
-from app.api.health import router as healthRouter
-from app.api.media import router as mediaRouter
-from app.api.projects import router as projectsRouter
-from app.api.render import router as renderRouter
-from app.api.scripts import router as scriptsRouter
-from app.api.setup import router as setupRouter
-from app.api.timeline import router as timelineRouter
 from app.config.logging_config import configureLogging
 from app.config.settings import getSettings
 
 
 def createApp() -> FastAPI:
+    from app.api.ai import router as aiRouter
+    from app.api.error_handlers import registerErrorHandlers
+    from app.api.health import router as healthRouter
+    from app.api.media import router as mediaRouter
+    from app.api.projects import router as projectsRouter
+    from app.api.render import router as renderRouter
+    from app.api.scripts import router as scriptsRouter
+    from app.api.setup import router as setupRouter
+    from app.api.timeline import router as timelineRouter
+
     settings = getSettings()
     configureLogging(settings)
 
@@ -41,6 +42,3 @@ def createApp() -> FastAPI:
     app.include_router(timelineRouter, prefix="/api")
     app.include_router(renderRouter, prefix="/api")
     return app
-
-
-app = createApp()

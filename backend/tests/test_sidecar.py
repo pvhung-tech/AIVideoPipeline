@@ -13,3 +13,9 @@ def testSidecarAcceptsHostAndPortOverrides() -> None:
 
     assert options.host == "localhost"
     assert options.port == 9000
+
+
+def testSidecarAcceptsParentPid() -> None:
+    options = buildParser().parse_args(["--parent-pid", "1234"])
+
+    assert options.parent_pid == 1234

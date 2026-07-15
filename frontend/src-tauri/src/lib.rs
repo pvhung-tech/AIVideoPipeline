@@ -3,7 +3,7 @@ use std::{
     io,
     path::PathBuf,
     process::Command,
-    sync::{mpsc, Mutex},
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -17,21 +17,16 @@ use tauri_plugin_shell::{
 
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: &str = "8765";
-const BACKEND_START_TIMEOUT: Duration = Duration::from_secs(15);
+const BACKEND_START_TIMEOUT: Duration = Duration::from_secs(45);
 
 struct BackendChild {
     command_child: CommandChild,
-    server_pid: u32,
+    server_pid: Arc<Mutex<Option<u32>>>,
     #[cfg(windows)]
-    _job: ProcessJob,
+    _job: Option<ProcessJob>,
 }
 
 struct BackendProcess(Mutex<Option<BackendChild>>);
-
-enum StartupSignal {
-    Ready(u32),
-    Failed(String),
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -65,45 +60,56 @@ fn start_backend(app: &mut App) -> Result<BackendProcess, Box<dyn Error>> {
         "--port",
         BACKEND_PORT,
     ]);
+    let command = command.env(
+        "AI_VIDEO_PIPELINE_PARENT_PID",
+        std::process::id().to_string(),
+    );
     let (mut events, child) = command.spawn()?;
     let sidecar_pid = child.pid();
     #[cfg(windows)]
-    let job = create_process_job(sidecar_pid)?;
-    let (startup_sender, startup_receiver) = mpsc::sync_channel(1);
+    let job = match create_process_job(sidecar_pid) {
+        Ok(job) => Some(job),
+        Err(error) => {
+            log::error!("Failed to create FastAPI sidecar process job: {error}");
+            None
+        }
+    };
+    let server_pid = Arc::new(Mutex::new(None));
+    let event_server_pid = Arc::clone(&server_pid);
 
     thread::spawn(move || {
-        let mut startup_sender = Some(startup_sender);
-        let mut server_pid = None;
-
         while let Some(event) = tauri::async_runtime::block_on(events.recv()) {
-            handle_backend_event(event, &mut startup_sender, &mut server_pid);
+            handle_backend_event(event, &event_server_pid);
         }
     });
 
-    match startup_receiver.recv_timeout(BACKEND_START_TIMEOUT) {
-        Ok(StartupSignal::Ready(server_pid)) => {
+    if wait_for_backend_health(BACKEND_START_TIMEOUT) {
+        #[cfg(windows)]
+        if let Some(job) = &job {
+            if let Ok(process) = server_pid.lock() {
+                if let Some(pid) = *process {
+                    if let Err(error) = assign_process_to_job(job, pid) {
+                        log::error!(
+                            "Failed to assign FastAPI server process to process job: {error}"
+                        );
+                    }
+                }
+            }
+        }
+        log::info!("FastAPI sidecar is ready on port {BACKEND_PORT}");
+        Ok(BackendProcess(Mutex::new(Some(BackendChild {
+            command_child: child,
+            server_pid,
             #[cfg(windows)]
-            assign_process_to_job(&job, server_pid)?;
-            log::info!("FastAPI sidecar is ready on port {BACKEND_PORT}");
-            Ok(BackendProcess(Mutex::new(Some(BackendChild {
-                command_child: child,
-                server_pid,
-                #[cfg(windows)]
-                _job: job,
-            }))))
-        }
-        Ok(StartupSignal::Failed(message)) => {
-            let _ = child.kill();
-            Err(io::Error::other(message).into())
-        }
-        Err(_) => {
-            let _ = child.kill();
-            Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "FastAPI sidecar did not become ready within 15 seconds",
-            )
-            .into())
-        }
+            _job: job,
+        }))))
+    } else {
+        let _ = child.kill();
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "FastAPI sidecar did not become healthy within 45 seconds",
+        )
+        .into())
     }
 }
 
@@ -134,56 +140,61 @@ fn open_existing_path(path: PathBuf) -> io::Result<()> {
     Ok(())
 }
 
-fn handle_backend_event(
-    event: CommandEvent,
-    startup_sender: &mut Option<mpsc::SyncSender<StartupSignal>>,
-    server_pid: &mut Option<u32>,
-) {
+fn handle_backend_event(event: CommandEvent, server_pid: &Arc<Mutex<Option<u32>>>) {
     match event {
         CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
             let line = String::from_utf8_lossy(&bytes);
             log::info!(target: "fastapi_sidecar", "{}", line.trim());
 
             if let Some(pid) = parse_sidecar_process_id(&line) {
-                *server_pid = Some(pid);
-            }
-
-            if is_backend_ready_line(&line) {
-                match *server_pid {
-                    Some(pid) => send_startup_signal(startup_sender, StartupSignal::Ready(pid)),
-                    None => send_startup_signal(
-                        startup_sender,
-                        StartupSignal::Failed(
-                            "FastAPI sidecar did not report its process ID".into(),
-                        ),
-                    ),
+                if let Ok(mut process) = server_pid.lock() {
+                    *process = Some(pid);
                 }
             }
         }
         CommandEvent::Error(message) => {
             log::error!(target: "fastapi_sidecar", "{message}");
-            send_startup_signal(startup_sender, StartupSignal::Failed(message));
         }
         CommandEvent::Terminated(payload) => {
             let message = format!("FastAPI sidecar exited with code {:?}", payload.code);
             log::error!(target: "fastapi_sidecar", "{message}");
-            send_startup_signal(startup_sender, StartupSignal::Failed(message));
         }
         _ => {}
     }
 }
 
-fn send_startup_signal(
-    startup_sender: &mut Option<mpsc::SyncSender<StartupSignal>>,
-    signal: StartupSignal,
-) {
-    if let Some(sender) = startup_sender.take() {
-        let _ = sender.send(signal);
+fn wait_for_backend_health(timeout: Duration) -> bool {
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        if backend_health_check() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(100));
     }
+    false
 }
 
-fn is_backend_ready_line(line: &str) -> bool {
-    line.contains("Uvicorn running on")
+fn backend_health_check() -> bool {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let Ok(mut stream) = TcpStream::connect(format!("{BACKEND_HOST}:{BACKEND_PORT}")) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let request = format!(
+        "GET /api/health HTTP/1.1\r\nHost: {BACKEND_HOST}:{BACKEND_PORT}\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut response = String::new();
+    if stream.read_to_string(&mut response).is_err() {
+        return false;
+    }
+    response.starts_with("HTTP/1.1 200")
+        && (response.contains("\"status\": \"ok\"") || response.contains("\"status\":\"ok\""))
 }
 
 fn parse_sidecar_process_id(line: &str) -> Option<u32> {
@@ -287,7 +298,11 @@ fn stop_backend(app_handle: &tauri::AppHandle) {
     };
 
     if let Some(child) = process.take() {
-        terminate_server_process(child.server_pid);
+        if let Ok(server_pid) = child.server_pid.lock() {
+            if let Some(pid) = *server_pid {
+                terminate_server_process(pid);
+            }
+        }
 
         if let Err(error) = child.command_child.kill() {
             log::error!("Failed to stop FastAPI sidecar: {error}");
@@ -333,21 +348,7 @@ fn terminate_server_process(_server_pid: u32) {}
 
 #[cfg(test)]
 mod tests {
-    use super::{is_backend_ready_line, parse_sidecar_process_id};
-
-    #[test]
-    fn detects_uvicorn_ready_message() {
-        assert!(is_backend_ready_line(
-            "INFO: Uvicorn running on http://127.0.0.1:8765"
-        ));
-    }
-
-    #[test]
-    fn ignores_unrelated_backend_output() {
-        assert!(!is_backend_ready_line(
-            "INFO: Application startup complete."
-        ));
-    }
+    use super::parse_sidecar_process_id;
 
     #[test]
     fn parses_sidecar_process_id() {
