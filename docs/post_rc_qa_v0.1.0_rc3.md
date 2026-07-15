@@ -100,7 +100,21 @@ Source artifact:
 
 ## MSI Published Artifact Smoke
 
-The MSI artifact downloaded and passed hash verification. Full MSI install
-smoke was not run in this session because the current terminal is not elevated
-and the MSI package is per-machine. Run the MSI smoke from an Administrator
-PowerShell session using the downloaded RC3 MSI artifact.
+The MSI artifact downloaded and passed hash verification. Administrator
+PowerShell smoke installed the MSI, returned sidecar health `ok`, recovered an
+interrupted durable render job, and produced
+`phase8-recovery-20260715-073515.mp4` with size `28,250,581` bytes.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Per-machine MSI install from elevated PowerShell | Pass | MSI installed to `.tmp/phase8-installed-app-msi-smoke/7c782fe31dc14ad2b12f36ed0cd0fba2`. |
+| Installed sidecar health | Pass | `/api/health` returned `ok`. |
+| Render recovery from installed sidecar | Pass | Interrupted durable render job recovered from `interrupted` to `queued`, resumed, and completed. |
+| Render output | Pass | Recovery smoke produced `phase8-recovery-20260715-073515.mp4` with size `28,250,581` bytes. |
+
+## QA Decision
+
+`v0.1.0-rc3` passes the post-publish NSIS and MSI install smokes, render
+recovery checks, sidecar health checks, and NSIS lifecycle cleanup check. This
+candidate is approved as the current stable-release candidate, with the strict
+startup max `<= 5s` item remaining in the release-hardening backlog.
