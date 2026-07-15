@@ -135,9 +135,8 @@ Final follow-up validation:
 | Packaged sidecar direct route smoke | Pass | Direct sidecar `/api/health` returned `ok`; `/api/projects/recent` succeeded after full app load. |
 | NSIS installed startup timing | Pass | 5 attempts averaged `3.5818s`; max `4.3726s`; `MeetsAverageTarget=True`; `MeetsStrictMaxTarget=True`. |
 | NSIS installed app lifecycle | Pass | Installed app exposed `/api/health=ok`, `/api/projects/recent` succeeded, external app termination left no sidecar process and no `127.0.0.1:8765` listener. |
-| MSI installed smoke | Pending | Current terminal is not elevated; MSI still reports that Administrator privileges are required for the per-machine package. |
+| MSI installed smoke | Pass | Administrator PowerShell smoke installed the MSI, returned sidecar health `ok`, recovered an interrupted render job, and produced `phase8-recovery-20260715-045630.mp4` with size `28,250,581` bytes. |
 
-Decision: `master` is technically ready for `v0.1.0-rc2` after MSI smoke passes
-from Administrator PowerShell or a separate QA machine/profile. Do not reuse the
-published `v0.1.0-rc1` artifacts for this fix; RC2 should be cut from the latest
-`master` after the elevated MSI gate.
+Decision: all RC2 gates are now satisfied. Cut `v0.1.0-rc2` from `master`
+commit `70d89d3` and publish the rebuilt MSI/NSIS artifacts listed above. Do
+not reuse the published `v0.1.0-rc1` artifacts for this fix.
