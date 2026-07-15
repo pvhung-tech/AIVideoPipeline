@@ -31,6 +31,22 @@ New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 $workspace = Join-Path $root ".tmp\phase10-sidecar-startup"
 New-Item -ItemType Directory -Force -Path $workspace | Out-Null
 
+function Stop-SidecarProcessesFromPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SidecarPath
+    )
+
+    $resolvedSidecarPath = (Resolve-Path -LiteralPath $SidecarPath -ErrorAction SilentlyContinue).Path
+    if (-not $resolvedSidecarPath) {
+        return
+    }
+
+    Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessName -like "fastapi-sidecar*" -and $_.Path -eq $resolvedSidecarPath } |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
 $samples = @()
 for ($index = 1; $index -le $Attempts; $index++) {
     $existing = netstat.exe -ano -p tcp | Select-String "127.0.0.1:$Port\s+.*LISTENING"
@@ -72,6 +88,7 @@ for ($index = 1; $index -le $Attempts; $index++) {
         if ($process -and -not $process.HasExited) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
+        Stop-SidecarProcessesFromPath -SidecarPath $SidecarPath
         $listener = netstat.exe -ano -p tcp | Select-String "127.0.0.1:$Port\s+.*LISTENING" | Select-Object -First 1
         if ($listener) {
             $listenerPid = [int](($listener.ToString() -split "\s+")[-1])

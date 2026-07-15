@@ -21,6 +21,7 @@ const BACKEND_START_TIMEOUT: Duration = Duration::from_secs(45);
 
 struct BackendChild {
     command_child: CommandChild,
+    sidecar_pid: u32,
     server_pid: Arc<Mutex<Option<u32>>>,
     #[cfg(windows)]
     _job: Option<ProcessJob>,
@@ -54,16 +55,16 @@ pub fn run() {
 }
 
 fn start_backend(app: &mut App) -> Result<BackendProcess, Box<dyn Error>> {
+    let parent_pid = std::process::id().to_string();
     let command = app.shell().sidecar("fastapi-sidecar")?.args([
         "--host",
         BACKEND_HOST,
         "--port",
         BACKEND_PORT,
+        "--parent-pid",
+        &parent_pid,
     ]);
-    let command = command.env(
-        "AI_VIDEO_PIPELINE_PARENT_PID",
-        std::process::id().to_string(),
-    );
+    let command = command.env("AI_VIDEO_PIPELINE_PARENT_PID", parent_pid);
     let (mut events, child) = command.spawn()?;
     let sidecar_pid = child.pid();
     #[cfg(windows)]
@@ -99,6 +100,7 @@ fn start_backend(app: &mut App) -> Result<BackendProcess, Box<dyn Error>> {
         log::info!("FastAPI sidecar is ready on port {BACKEND_PORT}");
         Ok(BackendProcess(Mutex::new(Some(BackendChild {
             command_child: child,
+            sidecar_pid,
             server_pid,
             #[cfg(windows)]
             _job: job,
@@ -300,7 +302,7 @@ fn stop_backend(app_handle: &tauri::AppHandle) {
     if let Some(child) = process.take() {
         if let Ok(server_pid) = child.server_pid.lock() {
             if let Some(pid) = *server_pid {
-                terminate_server_process(pid);
+                terminate_process(pid, "FastAPI server process");
             }
         }
 
@@ -309,25 +311,25 @@ fn stop_backend(app_handle: &tauri::AppHandle) {
         } else {
             log::info!("FastAPI sidecar stopped");
         }
+
+        terminate_process(child.sidecar_pid, "FastAPI sidecar process");
     }
 }
 
 #[cfg(windows)]
-fn terminate_server_process(server_pid: u32) {
+fn terminate_process(process_id: u32, label: &str) {
     use windows_sys::Win32::{
         Foundation::CloseHandle,
         System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE},
     };
 
-    // The PID comes from the sidecar itself. PyInstaller one-file mode creates
-    // a server child process that is not terminated when its bootloader exits.
+    // The PID comes from either the sidecar process handle or the sidecar log.
+    // PyInstaller one-file mode can leave a bootloader process behind unless
+    // both layers are terminated on desktop shutdown.
     unsafe {
-        let process_handle = OpenProcess(PROCESS_TERMINATE, 0, server_pid);
+        let process_handle = OpenProcess(PROCESS_TERMINATE, 0, process_id);
         if process_handle.is_null() {
-            log::error!(
-                "Failed to open FastAPI server process: {}",
-                io::Error::last_os_error()
-            );
+            log::error!("Failed to open {label}: {}", io::Error::last_os_error());
             return;
         }
 
@@ -336,15 +338,15 @@ fn terminate_server_process(server_pid: u32) {
         let _ = CloseHandle(process_handle);
 
         if terminated == 0 {
-            log::error!("Failed to terminate FastAPI server process: {terminate_error}");
+            log::error!("Failed to terminate {label}: {terminate_error}");
         } else {
-            log::info!("FastAPI server process stopped");
+            log::info!("{label} stopped");
         }
     }
 }
 
 #[cfg(not(windows))]
-fn terminate_server_process(_server_pid: u32) {}
+fn terminate_process(_process_id: u32, _label: &str) {}
 
 #[cfg(test)]
 mod tests {

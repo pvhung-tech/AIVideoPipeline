@@ -7,6 +7,22 @@ $installerPath = Join-Path $root "frontend\src-tauri\target\release\bundle\nsis\
 $installBase = Join-Path $root ".tmp\phase8-installed-app-smoke"
 $installPath = Join-Path $installBase ([Guid]::NewGuid().ToString("N"))
 
+function Stop-SidecarProcessesFromPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SidecarPath
+    )
+
+    $resolvedSidecarPath = (Resolve-Path -LiteralPath $SidecarPath -ErrorAction SilentlyContinue).Path
+    if (-not $resolvedSidecarPath) {
+        return
+    }
+
+    Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessName -like "fastapi-sidecar*" -and $_.Path -eq $resolvedSidecarPath } |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
 if (-not (Test-Path -LiteralPath $pythonPath)) {
     Write-Error "Backend virtual environment was not found at $pythonPath"
 }
@@ -62,6 +78,7 @@ finally {
     if ($healthProcess -and -not $healthProcess.HasExited) {
         Stop-Process -Id $healthProcess.Id -Force -ErrorAction SilentlyContinue
     }
+    Stop-SidecarProcessesFromPath -SidecarPath $sidecar.FullName
 }
 
 $previousSidecarPath = $env:PHASE8_RECOVERY_SIDECAR_PATH

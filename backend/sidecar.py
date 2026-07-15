@@ -6,7 +6,7 @@ import os
 import threading
 import time
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, NoReturn
 
 logger = logging.getLogger(__name__)
 FULL_APP_TIMEOUT_SECONDS = 30.0
@@ -163,8 +163,9 @@ class LazyDesktopApp:
 
 
 def startParentWatchdog(parentPid: int) -> None:
+    target = watchWindowsParentProcess if os.name == "nt" else watchParentProcess
     watcher = threading.Thread(
-        target=watchParentProcess,
+        target=target,
         args=(parentPid,),
         name="desktop-parent-watchdog",
         daemon=True,
@@ -188,7 +189,7 @@ def watchParentProcess(parentPid: int) -> None:
     while True:
         if not isProcessAlive(parentPid):
             logger.info("Desktop parent process %s exited; stopping sidecar", parentPid)
-            os._exit(0)
+            terminateCurrentProcess()
         time.sleep(1.0)
 
 
@@ -206,6 +207,41 @@ def isProcessAlive(processId: int) -> bool:
     return True
 
 
+def watchWindowsParentProcess(parentPid: int) -> None:
+    import ctypes
+
+    synchronize = 0x00100000
+    infinite = 0xFFFFFFFF
+    waitFailed = 0xFFFFFFFF
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.restype = ctypes.c_int
+    handle = kernel32.OpenProcess(synchronize, False, parentPid)
+    if not handle:
+        logger.info(
+            "Desktop parent process %s is not available; stopping sidecar", parentPid
+        )
+        terminateCurrentProcess()
+
+    try:
+        result = kernel32.WaitForSingleObject(handle, infinite)
+    finally:
+        kernel32.CloseHandle(handle)
+
+    if result == waitFailed:
+        logger.error(
+            "Failed while waiting for desktop parent process %s; stopping sidecar",
+            parentPid,
+        )
+    else:
+        logger.info("Desktop parent process %s exited; stopping sidecar", parentPid)
+    terminateCurrentProcess()
+
+
 def isWindowsProcessAlive(processId: int) -> bool:
     import ctypes
     from ctypes import wintypes
@@ -213,6 +249,15 @@ def isWindowsProcessAlive(processId: int) -> bool:
     processQueryLimitedInformation = 0x1000
     stillActive = 259
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.GetExitCodeProcess.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.GetExitCodeProcess.restype = ctypes.c_int
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.restype = ctypes.c_int
     handle = kernel32.OpenProcess(processQueryLimitedInformation, False, processId)
     if not handle:
         return False
@@ -224,6 +269,19 @@ def isWindowsProcessAlive(processId: int) -> bool:
         return exitCode.value == stillActive
     finally:
         kernel32.CloseHandle(handle)
+
+
+def terminateCurrentProcess(exitCode: int = 0) -> NoReturn:
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        kernel32.TerminateProcess.restype = ctypes.c_int
+        currentProcess = kernel32.GetCurrentProcess()
+        kernel32.TerminateProcess(currentProcess, exitCode)
+    os._exit(exitCode)
 
 
 if __name__ == "__main__":
