@@ -1,6 +1,6 @@
 # Phase 10 Release Notes
 
-Status: Release validation started; first-release startup gate revised
+Status: First release candidate approved
 
 Date: 2026-07-14
 
@@ -85,8 +85,8 @@ process/cache variance. Further meaningful reduction probably requires a
 packaging strategy decision such as onedir-style sidecar deployment or accepting
 a slightly higher first-release startup target.
 
-## Next Release Step
+## Final Release Candidate Decision
 
-Run the final handoff checklist in `docs/phase_10_release_handoff.md`, then
-decide whether to tag this build as the first release candidate or run one
-additional manual QA pass on a clean Windows machine.
+The final clean-profile native Dashboard visual check passed by manual
+confirmation on 2026-07-15. This build is approved for `v0.1.0-rc1` publishing
+with the MSI and NSIS artifacts listed above.

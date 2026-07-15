@@ -32,7 +32,7 @@ Supporting binaries:
 | Installed render recovery | Pass | NSIS-installed sidecar recovered an interrupted durable render job, resumed it, and completed an MP4 output. |
 | Rich workflow smoke | Pass | Created a project, imported 6 scenes, generated a timeline, cached media, rendered MP4, marked output accepted, and exported report/bundle artifacts. |
 | Browser visual dashboard check | Partial | Production Dashboard layout rendered in the browser with the expected navigation and workflow cards. Backend fetch showed a browser-only CORS failure because this check runs outside the Tauri desktop shell. |
-| Clean-profile native visual check | Pending | This environment could not create or switch to a clean Windows user profile, and desktop screenshot capture returned an invalid handle. |
+| Clean-profile native visual check | Pass | Manual confirmation on 2026-07-15: NSIS installer was opened on a clean Windows profile and the native Dashboard rendered correctly. |
 | Git release tag | Pass | Git for Windows `2.55.0.windows.2` was installed and annotated tag `v0.1.0-rc1` was created for the release candidate source commit. |
 | Packaged sidecar startup tracking | Tracked | Packaged sidecar average `5.8998s`, max `9.492s`; first one-file cold start remains a hardening item. |
 | Release notes | Pass | `docs/phase_10_release_notes.md` updated with gate decision, artifacts, smokes, and known risk. |
@@ -61,6 +61,6 @@ Supporting binaries:
 ## Final Decision
 
 The build passes the automated release handoff checks under the revised Phase
-10 startup gate, and annotated tag `v0.1.0-rc1` has been created. One native
-visual Dashboard check on a clean Windows profile remains pending because this
-environment could not switch profiles or capture the desktop window.
+10 startup gate, the clean-profile native Dashboard visual check has been
+manually confirmed, and annotated tag `v0.1.0-rc1` is approved as the first
+release candidate tag.
